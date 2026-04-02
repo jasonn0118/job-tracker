@@ -7,27 +7,30 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  // Allow your frontend (localhost:3000 or your deployed domain) to call this API
+  // Enable CORS for all origins (adjust if you add a frontend later)
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'https://your-frontend-domain.com', // replace with your actual domain
-    ],
+    origin: '*', // Allow all origins, or specify your Railway frontend domain
     methods: ['GET', 'POST'],
   });
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
-  logger.log(`Job tracker API running on http://localhost:${port}`);
+  // Bind to 0.0.0.0 for Railway (required for external access)
+  await app.listen(port, '0.0.0.0');
+
+  logger.log(`Job tracker API running on port ${port}`);
   logger.log('Endpoints:');
   logger.log('  GET  /jobs         — get cached jobs');
   logger.log('  POST /jobs/refresh — fetch fresh jobs from all sources');
 
-  // Fetch jobs on startup so cache is populated immediately
-  const jobsService = app.get(require('./jobs/jobs.service').JobsService);
-  logger.log('Fetching initial jobs on startup...');
-  await jobsService.fetchAllJobs();
+  // Skip initial fetch on Railway startup to avoid timeout
+  // Cron will run at 8 AM daily, or you can manually trigger POST /jobs/refresh
+  if (process.env.NODE_ENV !== 'production') {
+    const jobsService = app.get(require('./jobs/jobs.service').JobsService);
+    logger.log('Running initial fetch, scoring, and caching...');
+    await jobsService.scheduledFetch();
+  } else {
+    logger.log('Skipping initial fetch in production (cron will run at 8 AM daily)');
+  }
 }
 
 bootstrap();

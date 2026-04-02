@@ -1,0 +1,10 @@
+# Don't upload these to Railway
+node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+.git/
+README.md
+.vscode/
+.idea/

@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import * as xml2js from 'xml2js';
-import Anthropic from '@anthropic-ai/sdk';
-import { ScoringService } from '../scoring/scoring.service';
+import { ScoringService, ScoredJob } from '../scoring/scoring.service';
 import { EmailService } from '../email/email.service';
 
 export interface Job {
@@ -58,18 +57,13 @@ function dedupe(jobs: Job[]): Job[] {
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
-  private cachedJobs: Job[] = [];
+  private cachedJobs: ScoredJob[] = [];
   private lastFetched: Date | null = null;
-  private readonly anthropic: Anthropic;
 
   constructor(
     private readonly scoringService: ScoringService,
     private readonly emailService: EmailService,
-  ) {
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-  }
+  ) {}
 
   // ─── Indeed RSS ───────────────────────────────────────────────────────────
   // Indeed's public RSS requires no API key. Queries are URL-encoded search terms.
@@ -299,78 +293,6 @@ export class JobsService {
     return jobs;
   }
 
-  // ─── Claude AI Scoring ────────────────────────────────────────────────────
-
-  private async scoreJobWithClaude(job: Job): Promise<Job> {
-    try {
-      const prompt = `You are a job matching expert. Score this job posting from 0-100 based on how well it fits this profile:
-
-Target Profile:
-- Backend or Full-stack TypeScript developer
-- Junior to Mid-level experience (avoiding senior/lead roles)
-- Key skills: TypeScript, Node.js, NestJS, React, Next.js, GraphQL, PostgreSQL, AWS, Docker
-- Location: Vancouver BC or Remote
-- Seeking hands-on coding roles (not management)
-
-Job Posting:
-Title: ${job.title}
-Company: ${job.company}
-Location: ${job.location}
-Description: ${job.snippet}
-Detected Skills: ${job.tags.join(', ') || 'None detected'}
-Source: ${job.source}
-
-Respond in JSON format:
-{
-  "score": <number 0-100>,
-  "reason": "<brief 1-2 sentence explanation>"
-}
-
-Score higher for:
-- Backend/Full-stack roles with TypeScript
-- Mentions of Node.js, NestJS, or modern JS frameworks
-- Junior/mid-level or no explicit level mentioned
-- Vancouver or remote positions
-- Hands-on coding roles
-
-Score lower for:
-- Pure frontend roles (unless full-stack)
-- Senior/lead positions
-- Management-heavy roles
-- Unrelated technologies
-- Non-Vancouver locations (unless remote)`;
-
-      const message = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      });
-
-      const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-
-      if (jsonMatch) {
-        const result = JSON.parse(jsonMatch[0]);
-        return {
-          ...job,
-          score: result.score,
-          scoreReason: result.reason,
-        };
-      }
-
-      // Fallback if parsing fails
-      return { ...job, score: 50, scoreReason: 'Unable to parse AI response' };
-    } catch (err) {
-      this.logger.warn(`Failed to score job ${job.id}: ${err.message}`);
-      return { ...job, score: 50, scoreReason: 'Scoring failed' };
-    }
-  }
-
   // ─── Main fetch + cache ───────────────────────────────────────────────────
 
   async fetchAllJobs(): Promise<Job[]> {
@@ -391,30 +313,7 @@ Score lower for:
     const deduped = dedupe(allJobs);
     this.logger.log(`Fetched ${deduped.length} unique jobs (${allJobs.length} raw)`);
 
-    // Score jobs with Claude AI
-    this.logger.log(`Scoring ${deduped.length} jobs with Claude AI...`);
-    const scoredJobs = [];
-    let scored = 0;
-    for (const job of deduped) {
-      const scoredJob = await this.scoreJobWithClaude(job);
-      scoredJobs.push(scoredJob);
-      scored++;
-      if (scored % 10 === 0) {
-        this.logger.log(`Scored ${scored}/${deduped.length} jobs...`);
-      }
-    }
-
-    // Sort by score (highest first) and filter out low-scoring jobs
-    const filteredJobs = scoredJobs
-      .filter(j => j.score >= 40) // Keep jobs with score 40+
-      .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-    this.logger.log(`Scored ${scoredJobs.length} jobs, kept ${filteredJobs.length} with score ≥40`);
-
-    this.cachedJobs = filteredJobs;
-    this.lastFetched = new Date();
-
-    return filteredJobs;
+    return deduped;
   }
 
   getJobs(): { jobs: Job[]; lastFetched: Date | null; total: number } {
@@ -434,6 +333,10 @@ Score lower for:
     // Score jobs with the new resume-based scoring service
     this.logger.log('Scoring jobs against resume with Claude Opus 4.5...');
     const scoredJobs = await this.scoringService.scoreJobs(jobs);
+
+    // Cache scored jobs
+    this.cachedJobs = scoredJobs;
+    this.lastFetched = new Date();
 
     // Send daily email digest
     this.logger.log('Sending daily email digest...');

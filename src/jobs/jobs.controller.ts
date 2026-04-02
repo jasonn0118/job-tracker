@@ -13,11 +13,12 @@ export class JobsController {
     return this.jobsService.getJobs();
   }
 
-  // POST /jobs/refresh — triggers a fresh fetch from all sources (slow, ~5-10s)
+  // POST /jobs/refresh — triggers a fresh fetch, scoring, and email (slow, ~20-30s)
   @Post('refresh')
   async refresh() {
     this.logger.log('Manual refresh triggered');
-    const jobs = await this.jobsService.fetchAllJobs();
-    return { success: true, total: jobs.length };
+    await this.jobsService.scheduledFetch();
+    const result = this.jobsService.getJobs();
+    return { success: true, total: result.total, message: 'Jobs fetched, scored, and emailed' };
   }
 }
