@@ -19,7 +19,7 @@ export class EmailService {
 
   async sendDailyDigest(scoredJobs: ScoredJob[]): Promise<void> {
     const topJobs = scoredJobs
-      .filter(job => job.score >= 75)
+      .filter(job => job.score >= 70)
       .sort((a, b) => b.score - a.score);
 
     const date = new Date().toLocaleDateString('en-US', {
