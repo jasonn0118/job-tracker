@@ -1,0 +1,17 @@
+import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ConfigModule } from '@nestjs/config';
+import { JobsModule } from './jobs/jobs.module';
+import { ScoringModule } from './scoring/scoring.module';
+import { EmailModule } from './email/email.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
+    ScoringModule,
+    EmailModule,
+    JobsModule,
+  ],
+})
+export class AppModule {}
