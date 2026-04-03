@@ -14,7 +14,16 @@ export class EmailService {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
       },
-    });
+      // Force IPv4 to avoid ENETUNREACH errors with IPv6
+      tls: {
+        minVersion: 'TLSv1.2',
+      },
+      dnsTimeout: 5000,
+      connectionTimeout: 10000,
+    } as any);
+
+    // Override socket family to IPv4
+    (this.transporter as any).options.family = 4;
   }
 
   async sendDailyDigest(scoredJobs: ScoredJob[]): Promise<void> {
