@@ -324,8 +324,8 @@ export class JobsService {
     };
   }
 
-  // Run every day at 8am Vancouver time (UTC-7 = 15:00 UTC)
-  @Cron('0 15 * * *')
+  // Run every day at 8am PDT (local server time)
+  @Cron('0 8 * * *')
   async scheduledFetch() {
     this.logger.log('Running scheduled daily job fetch...');
     const jobs = await this.fetchAllJobs();
