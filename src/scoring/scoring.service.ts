@@ -73,21 +73,30 @@ ${this.RESUME}
 IMPORTANT PENALTIES:
 - Deduct 30+ points if role requires 7+ years experience or is clearly senior/lead/principal/staff
 - Deduct 20+ points if role is junior/entry-level/new-grad/intern
-- Candidate is seeking INTERMEDIATE level (4 years experience)`,
+- Candidate is seeking INTERMEDIATE level (4 years experience)
+
+LOCATION PREFERENCE (already factored into system - just score the role fit):
+- Candidate prefers remote work, then hybrid, then on-site
+- Remote/hybrid opportunities are preferred but don't artificially inflate base score`,
             cache_control: { type: 'ephemeral' },
           },
         ],
         messages: [
           {
             role: 'user',
-            content: `Score these ${jobs.length} jobs:
+            content: `Score these ${jobs.length} jobs AND analyze their work location type:
 
 ${JSON.stringify(jobsJson, null, 2)}
 
-For each job, respond with EXACTLY this JSON array format (no extra text):
+For each job, analyze the title, location, and description to determine:
+1. Base score (0-100) based on skills/experience match
+2. Location type: "remote", "hybrid", or "onsite"
+
+Respond with EXACTLY this JSON array format (no extra text):
 [
-  {"index": 0, "score": 85, "reason": "Strong NestJS + TypeScript backend match in Vancouver, intermediate level"},
-  {"index": 1, "score": 72, "reason": "Full-stack React + Node.js role, good fit but minimal backend description"},
+  {"index": 0, "score": 85, "reason": "Strong NestJS + TypeScript backend match in Vancouver, intermediate level", "locationType": "remote"},
+  {"index": 1, "score": 72, "reason": "Full-stack React + Node.js role, good fit but minimal backend description", "locationType": "hybrid"},
+  {"index": 2, "score": 68, "reason": "Good React skills match, TypeScript experience", "locationType": "onsite"},
   ...
 ]
 
@@ -99,6 +108,9 @@ Your JSON array:`,
       const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
       const scoredJobs = this.parseScoresFromResponse(responseText, jobs);
 
+      // Apply location bonuses: Remote (+10), Hybrid (+5), On-site (0)
+      const scoredWithLocationBonus = this.applyLocationBonus(scoredJobs);
+
       // Log cache usage for monitoring
       if (message.usage) {
         this.logger.log(
@@ -107,8 +119,8 @@ Your JSON array:`,
         );
       }
 
-      this.logger.log(`Successfully scored ${scoredJobs.length} jobs`);
-      return scoredJobs;
+      this.logger.log(`Successfully scored ${scoredWithLocationBonus.length} jobs`);
+      return scoredWithLocationBonus;
     } catch (err) {
       this.logger.error(`Failed to score jobs: ${err.message}`);
       // Return jobs with fallback scores
@@ -141,6 +153,7 @@ Your JSON array:`,
             ...job,
             score: 50,
             scoreReason: 'Score not returned by AI',
+            locationType: 'onsite', // default fallback
           };
         }
 
@@ -148,12 +161,41 @@ Your JSON array:`,
           ...job,
           score: scoreData.score,
           scoreReason: scoreData.reason,
+          locationType: scoreData.locationType || 'onsite',
         };
       });
     } catch (err) {
       this.logger.error(`Failed to parse scores: ${err.message}`);
       return this.fallbackScores(jobs);
     }
+  }
+
+  private applyLocationBonus(scoredJobs: ScoredJob[]): ScoredJob[] {
+    return scoredJobs.map(job => {
+      const locationType = (job as any).locationType || 'onsite';
+
+      let bonus = 0;
+      let bonusReason = '';
+
+      // Apply bonus based on Claude's location analysis
+      if (locationType === 'remote') {
+        bonus = 10;
+        bonusReason = ' (+10 for remote)';
+      } else if (locationType === 'hybrid') {
+        bonus = 5;
+        bonusReason = ' (+5 for hybrid)';
+      }
+      // onsite gets no bonus
+
+      // Cap score at 100
+      const newScore = Math.min(100, job.score + bonus);
+
+      return {
+        ...job,
+        score: newScore,
+        scoreReason: job.scoreReason + bonusReason,
+      };
+    });
   }
 
   private fallbackScores(jobs: Job[]): ScoredJob[] {
