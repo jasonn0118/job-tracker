@@ -121,5 +121,5 @@ curl -X POST https://your-app.up.railway.app/jobs/refresh
 
 This will:
 1. Fetch jobs from LinkedIn, Adzuna
-2. Score with Claude Opus 4.5
+2. Score with Claude Sonnet 4.5
 3. Send test email immediately

@@ -38,7 +38,7 @@ Location: Vancouver, BC (open to remote)
       return [];
     }
 
-    this.logger.log(`Scoring ${jobs.length} jobs with Claude Opus 4.5 (batched with prompt caching)...`);
+    this.logger.log(`Scoring ${jobs.length} jobs with Claude Sonnet 4.5 (batched with prompt caching)...`);
 
     try {
       const jobsJson = jobs.map((job, idx) => ({
@@ -52,7 +52,7 @@ Location: Vancouver, BC (open to remote)
       }));
 
       const message = await this.anthropic.messages.create({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-5',
         max_tokens: 8000,
         temperature: 0.3,
         system: [
@@ -64,20 +64,44 @@ Location: Vancouver, BC (open to remote)
 ${this.RESUME}
 --- END RESUME ---
 
---- SCORING RUBRIC ---
-* 80-100: Strong intermediate match, candidate's exact stack (React/Next.js/NestJS/TypeScript/Node.js/AWS)
-* 60-79: Related stack, some gaps (e.g., different backend framework, but similar level)
-* 40-59: Adjacent role or partial match (e.g., frontend-only when candidate prefers full-stack)
-* Below 40: Wrong level (senior/lead or junior) OR very different stack
+--- SCORING RUBRIC (EVIDENCE-BASED ONLY - NO ASSUMPTIONS) ---
 
-IMPORTANT PENALTIES:
-- Deduct 30+ points if role requires 7+ years experience or is clearly senior/lead/principal/staff
-- Deduct 20+ points if role is junior/entry-level/new-grad/intern
-- Candidate is seeking INTERMEDIATE level (4 years experience)
+🚫 CRITICAL: Score ONLY based on what's EXPLICITLY stated in job title, snippet, and tags. DO NOT assume tech stacks.
 
-LOCATION PREFERENCE (already factored into system - just score the role fit):
-- Candidate prefers remote work, then hybrid, then on-site
-- Remote/hybrid opportunities are preferred but don't artificially inflate base score`,
+RANKING PRIORITY: Full-stack/Backend > Frontend > Generic roles
+
+EXACT STACK MATCHES (use title/snippet/tags as evidence):
+* 90-100: Full-stack/Backend with React+Node.js OR Next.js+NestJS OR TypeScript+Node.js (explicit mentions)
+* 80-89: Full-stack/Backend with React OR TypeScript OR Node.js (partial stack match, explicit)
+* 70-79: Frontend with React+TypeScript (explicit mentions) - good but lower than full-stack
+* 65-74: Frontend with React OR TypeScript (explicit mention) - acceptable but not preferred
+* 60-69: Full-stack/Backend/Software Engineer (generic, NO stack info) - intermediate level, neutral score
+
+GENERIC/UNCLEAR ROLES (when NO tech stack mentioned):
+* 60-65: "Software Engineer", "Full Stack Developer", "Backend Developer" with NO stack details
+  - Score based on role type only (full-stack/backend > frontend)
+  - DO NOT assume what tech they use based on company
+  - Example: "Software Engineer at Amazon" = 60-65 (DON'T assume Java)
+
+ADJACENT STACKS (explicit mentions only):
+* 45-59: Vue.js, Angular, Express.js - transferable but different from candidate's primary stack
+* 20-44: WRONG STACK - .NET/C#, Java/Spring, Python/Django, Go, Rust (ONLY if explicitly stated)
+
+LEVEL PENALTIES (always apply):
+* Deduct 30+ points: Senior, Lead, Principal, Staff, 7+ years
+* Deduct 20+ points: Junior, Entry-level, New grad, Intern, 0-2 years
+
+🎯 SCORING EXAMPLES:
+- "Full Stack Engineer - React, Node.js, TypeScript" → 95 (exact match)
+- "Backend Developer - NestJS, GraphQL" → 92 (exact match)
+- "React Developer - TypeScript, Redux" → 75 (frontend, good stack)
+- "Frontend Developer - React" → 68 (frontend, partial)
+- "Software Engineer" (no stack info) → 60-65 (neutral, no assumptions)
+- "Full Stack Developer" (no stack info) → 65 (generic full-stack)
+- "Backend Engineer at Amazon" (no stack) → 60-65 (DON'T assume Java)
+- "Full Stack Developer - .NET, C#" → 30 (wrong stack, explicit)
+
+LOCATION: Bonus applied separately (+10 remote, +5 hybrid, +0 onsite)`,
             cache_control: { type: 'ephemeral' },
           },
         ],
@@ -111,11 +135,13 @@ Your JSON array:`,
       // Apply location bonuses: Remote (+10), Hybrid (+5), On-site (0)
       const scoredWithLocationBonus = this.applyLocationBonus(scoredJobs);
 
-      // Log cache usage for monitoring
+      // Log token usage for monitoring
       if (message.usage) {
         this.logger.log(
-          `Cache stats: ${message.usage.cache_creation_input_tokens || 0} tokens cached, ` +
-          `${message.usage.cache_read_input_tokens || 0} tokens read from cache`,
+          `Token usage: ${message.usage.input_tokens || 0} input, ` +
+          `${message.usage.output_tokens || 0} output | ` +
+          `Cache: ${message.usage.cache_creation_input_tokens || 0} created, ` +
+          `${message.usage.cache_read_input_tokens || 0} read`,
         );
       }
 

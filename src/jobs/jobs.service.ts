@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import * as xml2js from 'xml2js';
+import * as cheerio from 'cheerio';
 import { ScoringService, ScoredJob } from '../scoring/scoring.service';
 import { EmailService } from '../email/email.service';
 
@@ -224,7 +225,92 @@ export class JobsService {
       }
     }
 
-    return jobs;
+    // Enrich LinkedIn jobs with full descriptions
+    this.logger.log(`Enriching ${jobs.length} LinkedIn jobs with full descriptions...`);
+    const enrichedJobs = await this.enrichLinkedInJobs(jobs);
+    this.logger.log(`Successfully enriched ${enrichedJobs.length} LinkedIn jobs`);
+
+    return enrichedJobs;
+  }
+
+  // ─── Enrich LinkedIn Jobs with Full Descriptions ─────────────────────────
+  private async enrichLinkedInJobs(jobs: Job[]): Promise<Job[]> {
+    const enrichedJobs: Job[] = [];
+
+    for (const job of jobs) {
+      try {
+        const fullDescription = await this.fetchLinkedInJobDescription(job.link);
+        if (fullDescription && fullDescription.length > job.snippet.length) {
+          // Replace snippet with full description
+          enrichedJobs.push({
+            ...job,
+            snippet: fullDescription.slice(0, 2000), // Limit to 2000 chars for scoring
+          });
+          this.logger.log(`Enriched job: ${job.title} (${fullDescription.length} chars)`);
+        } else {
+          enrichedJobs.push(job); // Keep original if fetch failed
+        }
+
+        // Rate limit: 500ms between requests to avoid blocking
+        await sleep(500);
+      } catch (err) {
+        this.logger.warn(`Failed to enrich "${job.title}": ${err.message}`);
+        enrichedJobs.push(job); // Keep original on error
+      }
+    }
+
+    return enrichedJobs;
+  }
+
+  private async fetchLinkedInJobDescription(url: string): Promise<string | null> {
+    try {
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+      });
+
+      const $ = cheerio.load(response.data);
+
+      // Try multiple selectors to find job description
+      let description = '';
+
+      // Method 1: Look for div with class containing 'description'
+      description = $('div.description__text').text().trim();
+
+      if (!description) {
+        // Method 2: Look for article or section with description content
+        description = $('article.jobs-description').text().trim();
+      }
+
+      if (!description) {
+        // Method 3: Look for any div with 'show-more-less-html__markup' class
+        description = $('.show-more-less-html__markup').text().trim();
+      }
+
+      if (!description) {
+        // Method 4: Search in script tags for JSON-LD data
+        $('script[type="application/ld+json"]').each((_i, elem) => {
+          try {
+            const jsonData = JSON.parse($(elem).html() || '');
+            if (jsonData.description) {
+              description = jsonData.description;
+              return false; // Break the loop
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        });
+      }
+
+      return description || null;
+    } catch (err) {
+      this.logger.warn(`Failed to fetch LinkedIn job page: ${err.message}`);
+      return null;
+    }
   }
 
   // ─── Adzuna API ───────────────────────────────────────────────────────────
@@ -331,7 +417,7 @@ export class JobsService {
     const jobs = await this.fetchAllJobs();
 
     // Score jobs with the new resume-based scoring service
-    this.logger.log('Scoring jobs against resume with Claude Opus 4.5...');
+    this.logger.log('Scoring jobs against resume with Claude Sonnet 4.5...');
     const scoredJobs = await this.scoringService.scoreJobs(jobs);
 
     // Cache scored jobs
