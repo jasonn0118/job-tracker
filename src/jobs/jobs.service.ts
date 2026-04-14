@@ -5,6 +5,7 @@ import * as xml2js from 'xml2js';
 import * as cheerio from 'cheerio';
 import { ScoringService, ScoredJob } from '../scoring/scoring.service';
 import { EmailService } from '../email/email.service';
+import { ResumeService } from '../resume/resume.service';
 
 export interface Job {
   id: string;
@@ -64,6 +65,7 @@ export class JobsService {
   constructor(
     private readonly scoringService: ScoringService,
     private readonly emailService: EmailService,
+    private readonly resumeService: ResumeService,
   ) {}
 
   // ─── Indeed RSS ───────────────────────────────────────────────────────────
@@ -427,6 +429,18 @@ export class JobsService {
     // Send daily email digest
     this.logger.log('Sending daily email digest...');
     await this.emailService.sendDailyDigest(scoredJobs);
+
+    // Tailor resumes for top matches (score >= 75)
+    const topMatches = scoredJobs.filter(job => job.score >= 75);
+    if (topMatches.length > 0) {
+      this.logger.log(`Tailoring resumes for ${topMatches.length} top matches (score >= 75)...`);
+      for (const job of topMatches) {
+        await this.resumeService.tailorAndNotify(job);
+        await sleep(1500); // Rate limit to avoid API overload
+      }
+    } else {
+      this.logger.log('No jobs scored >= 75, skipping resume tailoring');
+    }
 
     this.logger.log('Scheduled fetch complete');
   }
