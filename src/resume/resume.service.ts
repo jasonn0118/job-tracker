@@ -9,9 +9,7 @@ import {
   Packer,
   Paragraph,
   TextRun,
-  HeadingLevel,
   AlignmentType,
-  UnderlineType,
 } from 'docx';
 import { ScoredJob } from '../scoring/scoring.service';
 
@@ -68,7 +66,6 @@ export class ResumeService {
     this.anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
-    // Ensure data directory exists
     const dataDir = path.join(process.cwd(), 'data');
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -78,7 +75,12 @@ export class ResumeService {
   getBaseResume(): BaseResume {
     try {
       const fileContent = fs.readFileSync(this.RESUME_FILE_PATH, 'utf-8');
-      return JSON.parse(fileContent);
+      const resume: BaseResume = JSON.parse(fileContent);
+      if (process.env.RESUME_EMAIL) resume.contact.email = process.env.RESUME_EMAIL;
+      if (process.env.RESUME_PHONE) resume.contact.phone = process.env.RESUME_PHONE;
+      if (process.env.RESUME_GITHUB) resume.contact.github = process.env.RESUME_GITHUB;
+      if (process.env.RESUME_LINKEDIN) resume.contact.linkedin = process.env.RESUME_LINKEDIN;
+      return resume;
     } catch (error) {
       this.logger.error(`Failed to read resume file: ${error.message}`);
       throw new Error('Resume file not found. Please create data/base-resume.json');
@@ -116,16 +118,31 @@ export class ResumeService {
 
   private async tailorResume(job: ScoredJob): Promise<TailoredResume> {
     const baseResume = this.getBaseResume();
-    const allBullets = [
-      ...baseResume.experience.flatMap(exp => exp.bullets),
-      ...baseResume.projects.flatMap(proj => proj.bullets),
+
+    const bulletsByRole = [
+      ...baseResume.experience.map(exp => ({
+        key: exp.company,
+        label: `${exp.company} (${exp.title})`,
+        bullets: exp.bullets,
+      })),
+      ...baseResume.projects.map(proj => ({
+        key: proj.name,
+        label: `${proj.name} (${proj.title})`,
+        bullets: proj.bullets,
+      })),
     ];
 
-    const prompt = `You are an expert resume writer. Given a job posting and resume bullets, reword the bullets to better match the job posting language.
+    const bulletsSection = bulletsByRole
+      .map(role => `### ${role.label}\n${role.bullets.map((b, i) => `${i + 1}. ${b}`).join('\n')}`)
+      .join('\n\n');
+
+    const responseKeys = bulletsByRole.map(r => `"${r.key}": ["bullet 1", "bullet 2", ...]`).join(',\n    ');
+
+    const prompt = `You are an expert resume writer. Given a job posting and resume bullets grouped by role, reword the bullets to better match the job posting language.
 
 Rules:
 - NEVER invent new experience or skills
-- ONLY reword/reorder existing bullets
+- ONLY reword/reorder bullets WITHIN each role — do NOT move bullets between roles
 - Match keywords from the job posting when appropriate
 - Keep bullets concise and impactful
 - Maintain truthfulness - don't exaggerate
@@ -135,15 +152,13 @@ Company: ${job.company}
 Job Description:
 ${job.snippet}
 
-Current Resume Bullets:
-${allBullets.map((b, i) => `${i + 1}. ${b}`).join('\n')}
+Current Resume Bullets (grouped by role):
+${bulletsSection}
 
 Respond with JSON only:
 {
   "tailoredBullets": {
-    "Beezly": ["bullet 1", "bullet 2", ...],
-    "Rennie": ["bullet 1", "bullet 2", ...],
-    "IntelliStock.io": ["bullet 1", "bullet 2", ...]
+    ${responseKeys}
   },
   "changes": ["Changed X to match Y keyword", "Reordered Z for emphasis", ...],
   "summary": "Brief 2-3 sentence summary of tailoring strategy"
@@ -182,126 +197,125 @@ Respond with JSON only:
       fs.mkdirSync(resumesDir, { recursive: true });
     }
 
+    const BODY = 20;    // 10pt
+    const HEADER = 22;  // 11pt
+    const NAME = 32;    // 16pt
+    const CONTACT = 18; // 9pt
+
+    const sectionHeading = (text: string) =>
+      new Paragraph({
+        thematicBreak: true,
+        spacing: { before: 240, after: 80 },
+        children: [new TextRun({ text, bold: true, size: HEADER })],
+      });
+
     const doc = new Document({
       sections: [
         {
-          properties: {},
+          properties: {
+            page: {
+              margin: { top: 1080, bottom: 1080, left: 1080, right: 1080 },
+            },
+          },
           children: [
             // Name
             new Paragraph({
-              text: baseResume.name,
-              heading: HeadingLevel.HEADING_1,
               alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 60 },
+              children: [new TextRun({ text: baseResume.name, bold: true, size: NAME })],
             }),
             // Contact
             new Paragraph({
               alignment: AlignmentType.CENTER,
+              spacing: { before: 0, after: 80 },
               children: [
                 new TextRun({
-                  text: `${baseResume.contact.email} | ${baseResume.contact.phone} | ${baseResume.contact.github} | ${baseResume.contact.linkedin} | ${baseResume.contact.portfolio}`,
-                  size: 20,
+                  text: `${baseResume.contact.email} | ${baseResume.contact.phone} | ${baseResume.contact.github} | ${baseResume.contact.linkedin}`,
+                  size: CONTACT,
                 }),
               ],
             }),
-            new Paragraph({ text: '' }), // spacing
 
             // Skills
-            new Paragraph({
-              text: 'SKILLS',
-              heading: HeadingLevel.HEADING_2,
-              thematicBreak: true,
-            }),
+            sectionHeading('SKILLS'),
             ...Object.entries(baseResume.skills).map(
               ([category, skills]) =>
                 new Paragraph({
+                  spacing: { before: 0, after: 40 },
                   children: [
-                    new TextRun({ text: `${category}: `, bold: true }),
-                    new TextRun({ text: skills }),
+                    new TextRun({ text: `${category}: `, bold: true, size: BODY }),
+                    new TextRun({ text: skills, size: BODY }),
                   ],
                 }),
             ),
-            new Paragraph({ text: '' }),
 
             // Certifications (if present)
             ...(baseResume.certifications && baseResume.certifications.length > 0
               ? [
-                  new Paragraph({
-                    text: 'CERTIFICATIONS',
-                    heading: HeadingLevel.HEADING_2,
-                    thematicBreak: true,
-                  }),
+                  sectionHeading('CERTIFICATIONS'),
                   ...baseResume.certifications.map(
                     cert =>
                       new Paragraph({
+                        spacing: { before: 0, after: 40 },
                         children: [
-                          new TextRun({ text: cert.name, bold: true }),
-                          new TextRun({ text: ` — Issued ${cert.issueDate}` }),
+                          new TextRun({ text: cert.name, bold: true, size: BODY }),
+                          new TextRun({ text: ` — Issued ${cert.issueDate}`, size: BODY }),
                         ],
                       }),
                   ),
-                  new Paragraph({ text: '' }),
                 ]
               : []),
 
             // Experience
-            new Paragraph({
-              text: 'EXPERIENCE',
-              heading: HeadingLevel.HEADING_2,
-              thematicBreak: true,
-            }),
+            sectionHeading('EXPERIENCE'),
             ...baseResume.experience.flatMap(exp => [
               new Paragraph({
+                spacing: { before: 60, after: 40 },
                 children: [
-                  new TextRun({ text: exp.company, bold: true }),
-                  new TextRun({ text: ` (${exp.period})` }),
-                  new TextRun({ text: ` — ${exp.title}, ${exp.location}`, italics: true }),
+                  new TextRun({ text: exp.company, bold: true, size: BODY }),
+                  new TextRun({ text: ` (${exp.period})`, size: BODY }),
+                  new TextRun({ text: ` — ${exp.title}, ${exp.location}`, italics: true, size: BODY }),
                 ],
               }),
               ...(tailored.tailoredBullets[exp.company] || exp.bullets).map(
                 bullet =>
                   new Paragraph({
-                    text: `• ${bullet}`,
-                    bullet: { level: 0 },
+                    spacing: { before: 0, after: 40 },
+                    indent: { left: 240 },
+                    children: [new TextRun({ text: `• ${bullet}`, size: BODY })],
                   }),
               ),
-              new Paragraph({ text: '' }),
             ]),
 
             // Projects
-            new Paragraph({
-              text: 'PROJECTS',
-              heading: HeadingLevel.HEADING_2,
-              thematicBreak: true,
-            }),
+            sectionHeading('PROJECTS'),
             ...baseResume.projects.flatMap(proj => [
               new Paragraph({
+                spacing: { before: 60, after: 40 },
                 children: [
-                  new TextRun({ text: proj.name, bold: true }),
-                  new TextRun({ text: ` — ${proj.title}`, italics: true }),
+                  new TextRun({ text: proj.name, bold: true, size: BODY }),
+                  new TextRun({ text: ` — ${proj.title}`, italics: true, size: BODY }),
                 ],
               }),
               ...(tailored.tailoredBullets[proj.name] || proj.bullets).map(
                 bullet =>
                   new Paragraph({
-                    text: `• ${bullet}`,
-                    bullet: { level: 0 },
+                    spacing: { before: 0, after: 40 },
+                    indent: { left: 240 },
+                    children: [new TextRun({ text: `• ${bullet}`, size: BODY })],
                   }),
               ),
-              new Paragraph({ text: '' }),
             ]),
 
             // Education
-            new Paragraph({
-              text: 'EDUCATION',
-              heading: HeadingLevel.HEADING_2,
-              thematicBreak: true,
-            }),
+            sectionHeading('EDUCATION'),
             ...baseResume.education.map(
               edu =>
                 new Paragraph({
+                  spacing: { before: 0, after: 40 },
                   children: [
-                    new TextRun({ text: edu.school, bold: true }),
-                    new TextRun({ text: ` — ${edu.degree} (${edu.period})` }),
+                    new TextRun({ text: edu.school, bold: true, size: BODY }),
+                    new TextRun({ text: ` — ${edu.degree} (${edu.period})`, size: BODY }),
                   ],
                 }),
             ),
