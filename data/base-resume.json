@@ -1,0 +1,79 @@
+{
+  "name": "Jeamin Shin",
+  "contact": {
+    "email": "your@email.com",
+    "phone": "000-000-0000",
+    "github": "github.com/yourusername",
+    "linkedin": "linkedin.com/in/yourusername"
+  },
+  "skills": {
+    "Frontend & UI": "React, Next.js, Redux, TypeScript, React Native/Expo, Tailwind",
+    "Backend & APIs": "Ruby on Rails, NestJS, Node.js, GraphQL, TypeORM",
+    "Database & Data": "PostgreSQL, MySQL, NoSQL, pgvector",
+    "Cloud & Infrastructure": "AWS (S3, Lambda, RDS, SQS, CloudWatch), Github Actions",
+    "Languages": "Ruby, JavaScript, TypeScript, Java, C#, HTML, CSS"
+  },
+  "certifications": [
+    {
+      "name": "AWS Certified Cloud Practitioner",
+      "issueDate": "Oct 2025"
+    },
+    {
+      "name": "AWS Certified Developer – Associate",
+      "issueDate": "Jan 2026"
+    }
+  ],
+  "experience": [
+    {
+      "company": "Beezly",
+      "period": "Aug 2025–Dec 2025",
+      "title": "Software Developer",
+      "location": "Vancouver, BC",
+      "bullets": [
+        "Modernized post-MVP architecture by migrating to AWS (RDS, Cognito, EC2, App Runner), improving operational efficiency and backend performance",
+        "Optimized receipt pipeline with embedding and vector similarity search after OCR, reducing processing time from ~15s to ~2–3s (≈80% faster) while improving matching accuracy",
+        "Architected monorepo with NestJS modular backend services and shared interface definitions (DTOs, schemas) for cross-application validation",
+        "Led CI/CD architecture: split pipelines per app (backend, client, mobile), orchestrated lint/test/integration/deploy steps and enforced code review standards",
+        "Acted as tech lead for a 5-member team, guiding architectural direction, mentoring developers, and ensuring timely delivery of production-grade features",
+        "1st Prize Winner, 2025 KATEC Hackathon for innovation, execution, and market potential"
+      ]
+    },
+    {
+      "company": "Rennie",
+      "period": "May 2021–Nov 2024",
+      "title": "Software Developer",
+      "location": "Vancouver, BC",
+      "bullets": [
+        "Rebuilt UI in Next.js + TypeScript, raising performance score 64 → 94 and slashing bundle size ~35% via unused module removal and dynamic imports",
+        "Transitioned backend from Rails to NestJS, introducing modular layers that improved maintainability, scalability, and concurrency",
+        "Built federated GraphQL APIs to unify listing data from disparate sources, enabling single-query flexibility for frontend and internal tools",
+        "Optimized listing search by adding indexes, rewriting resolver logic, applying memoization, and integrating Redis caching to reduce latency",
+        "Architected an interactive property map with marker clustering and dynamic filters, enabling faster rendering of large listing datasets",
+        "Engaged with product, design, and QA throughout cycles – gathering requirements, giving UI/UX feedback, running demos, and incorporating test feedback"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "IntelliStock.io",
+      "title": "Fullstack Developer",
+      "bullets": [
+        "Developed a full-stack stock app — Next.js 15, NestJS API — ingesting market data periodically and normalizing it in scheduled cron job pipelines",
+        "Transformed embeddings into contextual input for a GPT-driven insight engine, enabling nuanced analysis over 9,000+ Nasdaq instruments",
+        "Leveraged Next.js SSR to split static and dynamic components, pre-rendering stable parts and rendering interactive elements at runtime for responsiveness"
+      ]
+    }
+  ],
+  "education": [
+    {
+      "school": "Douglas College",
+      "degree": "Diploma, Computer Studies & Information Systems",
+      "period": "Sep 2018–Dec 2020"
+    },
+    {
+      "school": "Hongik University",
+      "degree": "B.A. International Management",
+      "period": "Mar 2009–Jun 2014"
+    }
+  ]
+}

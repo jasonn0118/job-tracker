@@ -41,9 +41,6 @@ temp/
 # Generated resumes
 resumes/
 
-# Resume data
-data/base-resume.json
-
 # OS
 .DS_Store
 Thumbs.db
